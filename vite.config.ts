@@ -20,6 +20,14 @@ export default defineConfig(({mode}) => {
       port: 5000,
       allowedHosts: true,
       hmr: process.env.DISABLE_HMR !== 'true',
+      watch: {
+        ignored: [
+          '**/.local/**',
+          '**/.cache/**',
+          '**/.replit',
+          '**/node_modules/**',
+        ],
+      },
       proxy: {
         '/api': {
           target: 'http://localhost:3001',
