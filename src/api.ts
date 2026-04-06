@@ -40,3 +40,12 @@ export const getEmployees = () => request<any[]>('GET', '/employees');
 export const getLeaveRequests = () => request<any[]>('GET', '/leave-requests');
 export const updateLeaveRequest = (id: string, status: string) => request<any>('PUT', `/leave-requests/${id}`, { status });
 export const createLeaveRequest = (lr: any) => request<any>('POST', '/leave-requests', lr);
+
+// Users
+export const getUsers = () => request<any[]>('GET', '/users');
+export const createUser = (user: any) => request<any>('POST', '/users', user);
+export const updateUser = (id: string, data: any) => request<any>('PUT', `/users/${id}`, data);
+export const deleteUser = (id: string) => request<any>('DELETE', `/users/${id}`);
+
+// Auth
+export const login = (email: string, password: string) => request<any>('POST', '/auth/login', { email, password });

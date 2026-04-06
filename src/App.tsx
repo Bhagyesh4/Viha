@@ -10,7 +10,7 @@ import {
   Zap, Edit2, Trash2, Check, HeartPulse, Car, Home, Plane,
   Award, XCircle, Columns, Stethoscope, ChevronDown, Info,
   UserCheck, AtSign, Send, Paperclip, Timer, LayoutGrid, List,
-  UserCircle
+  UserCircle, UserCog
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -2277,9 +2277,325 @@ const TargetView = ({ role, currentUser, targets, setTargets }: { role: UserRole
   );
 };
 
+// --- Login View ---
+const LoginView = ({ onLogin }: { onLogin: (user: User) => void }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const user = await api.login(email, password);
+      onLogin(user);
+    } catch {
+      setError('Invalid email or password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const DEMO_CREDENTIALS = [
+    { role: 'Super Admin', email: 'alex@assuranceledger.com', password: 'admin123' },
+    { role: 'Customer', email: 'eleanor.v@gmail.com', password: 'customer123' },
+    { role: 'Agent', email: 'm.chen@assuranceledger.com', password: 'agent123' },
+    { role: 'Employee', email: 'm.thorne@assuranceledger.com', password: 'employee123' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-primary/20 to-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30">
+              <ShieldCheck size={24} className="text-white" />
+            </div>
+            <div className="text-left">
+              <p className="text-white font-headline font-extrabold text-xl leading-tight">Assurance Ledger</p>
+              <p className="text-white/50 text-xs font-medium uppercase tracking-widest">Enterprise Suite</p>
+            </div>
+          </div>
+          <h1 className="text-2xl font-headline font-bold text-white">Welcome back</h1>
+          <p className="text-white/50 text-sm mt-1">Sign in to your account to continue</p>
+        </div>
+
+        {/* Form */}
+        <div className="bg-white/10 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-white/70 text-sm font-medium mb-2">Email Address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                required
+                className="w-full bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-white/70 text-sm font-medium mb-2">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="w-full bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60 transition-all"
+              />
+            </div>
+            {error && (
+              <div className="bg-red-500/20 border border-red-500/30 rounded-xl px-4 py-3 text-red-300 text-sm">
+                {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-primary text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-primary/30 hover:opacity-90 transition-all disabled:opacity-60"
+            >
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+        </div>
+
+        {/* Demo Credentials */}
+        <div className="mt-6 bg-white/5 border border-white/10 rounded-2xl p-5">
+          <p className="text-white/40 text-xs font-bold uppercase tracking-wider mb-3">Demo Credentials</p>
+          <div className="grid grid-cols-2 gap-2">
+            {DEMO_CREDENTIALS.map(cred => (
+              <button
+                key={cred.role}
+                onClick={() => { setEmail(cred.email); setPassword(cred.password); }}
+                className="text-left bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl p-3 transition-all"
+              >
+                <p className="text-white text-xs font-bold">{cred.role}</p>
+                <p className="text-white/40 text-[10px] truncate">{cred.email}</p>
+                <p className="text-white/30 text-[10px]">{cred.password}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- User Management View ---
+const UserManagementView = ({ currentUserId }: { currentUserId: string }) => {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'Employee' as UserRole, avatar: '' });
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const ROLE_COLORS: Record<string, string> = {
+    'Super Admin': 'bg-purple-100 text-purple-700',
+    'Customer': 'bg-blue-100 text-blue-700',
+    'Agent': 'bg-green-100 text-green-700',
+    'Employee': 'bg-orange-100 text-orange-700',
+  };
+
+  const AVATAR_OPTIONS = [
+    'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=100&h=100',
+    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+    'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+    'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+  ];
+
+  React.useEffect(() => {
+    api.getUsers().then(setUsers).catch(console.error).finally(() => setLoading(false));
+  }, []);
+
+  const openAdd = () => {
+    setEditingUser(null);
+    setFormData({ name: '', email: '', password: '', role: 'Employee', avatar: AVATAR_OPTIONS[4] });
+    setFormError('');
+    setIsModalOpen(true);
+  };
+
+  const openEdit = (user: any) => {
+    setEditingUser(user);
+    setFormData({ name: user.name, email: user.email, password: '', role: user.role, avatar: user.avatar || AVATAR_OPTIONS[0] });
+    setFormError('');
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.name.trim() || !formData.email.trim()) { setFormError('Name and email are required.'); return; }
+    if (!editingUser && !formData.password.trim()) { setFormError('Password is required for new users.'); return; }
+    setSaving(true);
+    setFormError('');
+    try {
+      if (editingUser) {
+        await api.updateUser(editingUser.id, { name: formData.name, email: formData.email, role: formData.role, avatar: formData.avatar, ...(formData.password ? { password: formData.password } : {}) });
+        setUsers(users.map(u => u.id === editingUser.id ? { ...u, name: formData.name, email: formData.email, role: formData.role, avatar: formData.avatar } : u));
+      } else {
+        const newId = `U-${Date.now()}`;
+        const created = await api.createUser({ id: newId, ...formData });
+        setUsers([...users, { ...created, id: newId }]);
+      }
+      setIsModalOpen(false);
+    } catch (e: any) {
+      setFormError(e.message || 'Failed to save user. Email may already be taken.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (user: any) => {
+    if (user.id === currentUserId) return alert("You cannot delete your own account.");
+    if (!confirm(`Delete ${user.name}? This cannot be undone.`)) return;
+    try {
+      await api.deleteUser(user.id);
+      setUsers(users.filter(u => u.id !== user.id));
+    } catch (e: any) {
+      alert('Failed to delete user.');
+    }
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-on-surface-variant">Loading users...</div>;
+
+  return (
+    <div className="space-y-8">
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-3xl font-headline font-extrabold tracking-tight text-on-surface">User Management</h2>
+          <p className="text-on-surface-variant font-body">Manage system accounts and access roles.</p>
+        </div>
+        <button
+          onClick={openAdd}
+          className="bg-primary text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:opacity-90 transition-all flex items-center gap-2"
+        >
+          <Plus size={16} /> Add User
+        </button>
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {(['Super Admin', 'Agent', 'Customer', 'Employee'] as UserRole[]).map(role => (
+          <div key={role} className="bg-white rounded-2xl p-5 shadow-sm border border-outline-variant/10">
+            <p className="text-xs text-on-surface-variant font-medium mb-1">{role}s</p>
+            <p className="text-2xl font-headline font-extrabold text-on-surface">{users.filter(u => u.role === role).length}</p>
+            <div className={cn("mt-2 inline-block px-2 py-0.5 rounded-full text-[10px] font-bold", ROLE_COLORS[role])}>{role}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Users Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-outline-variant/10 bg-slate-50/50">
+              <th className="text-left p-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">User</th>
+              <th className="text-left p-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider hidden md:table-cell">Email</th>
+              <th className="text-left p-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Role</th>
+              <th className="text-right p-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-outline-variant/5">
+            {users.map(user => (
+              <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="p-4">
+                  <div className="flex items-center gap-3">
+                    <img src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`} className="w-9 h-9 rounded-xl object-cover" alt={user.name} />
+                    <div>
+                      <p className="text-sm font-bold text-on-surface">{user.name}</p>
+                      <p className="text-[10px] text-on-surface-variant">{user.id}</p>
+                    </div>
+                    {user.id === currentUserId && <span className="text-[9px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">You</span>}
+                  </div>
+                </td>
+                <td className="p-4 hidden md:table-cell">
+                  <p className="text-sm text-on-surface-variant">{user.email}</p>
+                </td>
+                <td className="p-4">
+                  <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold", ROLE_COLORS[user.role] || 'bg-slate-100 text-slate-600')}>{user.role}</span>
+                </td>
+                <td className="p-4 text-right">
+                  <div className="flex items-center gap-2 justify-end">
+                    <button onClick={() => openEdit(user)} className="p-2 hover:bg-primary/10 rounded-lg text-primary transition-colors"><Edit2 size={14} /></button>
+                    <button onClick={() => handleDelete(user)} disabled={user.id === currentUserId} className="p-2 hover:bg-red-50 rounded-lg text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"><Trash2 size={14} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {users.length === 0 && (
+          <div className="text-center py-16 text-on-surface-variant text-sm">No users found.</div>
+        )}
+      </div>
+
+      {/* Add/Edit Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-headline font-bold text-on-surface">{editingUser ? 'Edit User' : 'Add New User'}</h3>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors"><X size={18} /></button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Full Name</label>
+                  <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Jane Doe" className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Email</label>
+                  <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="jane@company.com" className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">{editingUser ? 'New Password (leave blank to keep)' : 'Password'}</label>
+                  <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="••••••••" className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Role</label>
+                  <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as UserRole})} className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none bg-white">
+                    <option value="Super Admin">Super Admin</option>
+                    <option value="Agent">Agent</option>
+                    <option value="Customer">Customer</option>
+                    <option value="Employee">Employee</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">Avatar</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {AVATAR_OPTIONS.map((url, i) => (
+                      <button key={i} onClick={() => setFormData({...formData, avatar: url})} className={cn("w-10 h-10 rounded-xl overflow-hidden ring-2 transition-all", formData.avatar === url ? "ring-primary" : "ring-transparent hover:ring-slate-200")}>
+                        <img src={url} className="w-full h-full object-cover" alt="" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {formError && <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-2">{formError}</p>}
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setIsModalOpen(false)} className="flex-1 border border-outline-variant/30 text-on-surface-variant py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all">Cancel</button>
+                  <button onClick={handleSave} disabled={saving} className="flex-1 bg-primary text-white py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:opacity-90 transition-all disabled:opacity-60">
+                    {saving ? 'Saving...' : editingUser ? 'Save Changes' : 'Create User'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 // --- Main App Component ---
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User>(DEMO_USERS['Super Admin']);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -2299,6 +2615,22 @@ export default function App() {
     api.getLeaveRequests().then(setLeaveRequests).catch(() => setLeaveRequests([]));
   }, []);
 
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    setIsLoggedIn(true);
+    setActiveTab('Dashboard');
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsLoggedIn(false);
+    setActiveTab('Dashboard');
+  };
+
+  if (!isLoggedIn || !currentUser) {
+    return <LoginView onLogin={handleLogin} />;
+  }
+
   const getNavItems = (role: UserRole) => {
     const items = [
       { name: 'Dashboard', icon: LayoutDashboard, roles: ['Super Admin', 'Customer', 'Agent', 'Employee'] },
@@ -2311,16 +2643,12 @@ export default function App() {
       { name: 'Documents', icon: FileText, roles: ['Customer'] },
       { name: 'Commission', icon: DollarSign, roles: ['Agent'] },
       { name: 'Target', icon: Target, roles: ['Super Admin', 'Agent', 'Employee'] },
+      { name: 'Users', icon: UserCog, roles: ['Super Admin'] },
     ];
     return items.filter(item => item.roles.includes(role));
   };
 
   const navItems = getNavItems(currentUser.role);
-
-  const switchRole = (role: UserRole) => {
-    setCurrentUser(DEMO_USERS[role]);
-    setActiveTab('Dashboard');
-  };
 
   return (
     <div className="flex min-h-screen bg-background overflow-x-hidden">
@@ -2393,7 +2721,7 @@ export default function App() {
             <HelpCircle size={18} />
             <span>Support</span>
           </button>
-          <button className="flex items-center gap-3 px-4 py-2.5 text-slate-500 hover:text-error transition-colors text-sm font-medium">
+          <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-2.5 text-slate-500 hover:text-error transition-colors text-sm font-medium">
             <LogOut size={18} />
             <span>Sign Out</span>
           </button>
@@ -2436,23 +2764,21 @@ export default function App() {
               <div className="text-right hidden lg:block">
                 <div className="flex flex-col items-end">
                   <p className="text-xs font-bold text-on-surface leading-tight">{currentUser.name}</p>
-                  <select 
-                    value={currentUser.role}
-                    onChange={(e) => switchRole(e.target.value as UserRole)}
-                    className="text-[10px] text-slate-500 font-medium bg-transparent border-none p-0 focus:ring-0 cursor-pointer hover:text-primary transition-colors"
-                  >
-                    <option value="Super Admin">Super Admin</option>
-                    <option value="Customer">Customer</option>
-                    <option value="Agent">Agent</option>
-                    <option value="Employee">Employee</option>
-                  </select>
+                  <p className="text-[10px] text-slate-500 font-medium">{currentUser.role}</p>
                 </div>
               </div>
               <img 
-                src={currentUser.avatar} 
+                src={currentUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=random`} 
                 alt="Profile" 
                 className="w-10 h-10 rounded-xl object-cover ring-2 ring-white shadow-sm"
               />
+              <button
+                onClick={handleLogout}
+                title="Sign Out"
+                className="p-2 rounded-xl hover:bg-red-50 transition-colors text-slate-400 hover:text-red-500"
+              >
+                <LogOut size={18} />
+              </button>
             </div>
           </div>
         </header>
@@ -2477,6 +2803,7 @@ export default function App() {
               {activeTab === 'Documents' && <DocumentsView />}
               {activeTab === 'Commission' && <CommissionView />}
               {activeTab === 'Target' && <TargetView role={currentUser.role} currentUser={currentUser} targets={targets} setTargets={setTargets} />}
+              {activeTab === 'Users' && currentUser.role === 'Super Admin' && <UserManagementView currentUserId={currentUser.id} />}
             </motion.div>
           </AnimatePresence>
         </div>

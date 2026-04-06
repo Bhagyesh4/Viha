@@ -347,6 +347,105 @@ app.post('/api/leave-requests', async (req, res) => {
   }
 });
 
+// ─── USERS ───────────────────────────────────────────────────────────────────
+
+// Ensure users table exists and is seeded
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(20) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(100) NOT NULL DEFAULT 'password123',
+        role VARCHAR(20) NOT NULL DEFAULT 'Employee',
+        avatar TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`
+      INSERT INTO users (id, name, email, password, role, avatar) VALUES
+        ('U-001', 'Alex Sterling', 'alex@assuranceledger.com', 'admin123', 'Super Admin', 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=100&h=100'),
+        ('U-002', 'Eleanor Vance', 'eleanor.v@gmail.com', 'customer123', 'Customer', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'),
+        ('U-003', 'Michael Chen', 'm.chen@assuranceledger.com', 'agent123', 'Agent', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'),
+        ('U-004', 'Marcus Thorne', 'm.thorne@assuranceledger.com', 'employee123', 'Employee', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80')
+      ON CONFLICT (id) DO NOTHING
+    `);
+  } catch (e: any) {
+    console.error('Users table setup error:', e.message);
+  }
+})();
+
+app.get('/api/users', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, name, email, role, avatar, created_at FROM users ORDER BY created_at ASC');
+    res.json(result.rows.map(r => ({
+      id: r.id, name: r.name, email: r.email, role: r.role, avatar: r.avatar || '', createdAt: r.created_at
+    })));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const { id, name, email, password, role, avatar } = req.body;
+    const result = await pool.query(
+      `INSERT INTO users (id, name, email, password, role, avatar) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, name, email, role, avatar`,
+      [id, name, email, password || 'password123', role || 'Employee', avatar || '']
+    );
+    res.json(result.rows[0]);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { name, email, password, role, avatar } = req.body;
+    const fields: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+    if (name !== undefined) { fields.push(`name=$${i++}`); values.push(name); }
+    if (email !== undefined) { fields.push(`email=$${i++}`); values.push(email); }
+    if (password !== undefined && password !== '') { fields.push(`password=$${i++}`); values.push(password); }
+    if (role !== undefined) { fields.push(`role=$${i++}`); values.push(role); }
+    if (avatar !== undefined) { fields.push(`avatar=$${i++}`); values.push(avatar); }
+    values.push(req.params.id);
+    if (fields.length === 0) return res.json({ success: true });
+    await pool.query(`UPDATE users SET ${fields.join(',')} WHERE id=$${i}`, values);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const result = await pool.query(
+      'SELECT id, name, email, role, avatar FROM users WHERE email=$1 AND password=$2',
+      [email, password]
+    );
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    const u = result.rows[0];
+    res.json({ id: u.id, name: u.name, email: u.email, role: u.role, avatar: u.avatar || '' });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── HEALTH ──────────────────────────────────────────────────────────────────
 
 app.get('/api/health', (req, res) => {
