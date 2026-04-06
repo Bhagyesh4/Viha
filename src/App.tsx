@@ -38,7 +38,8 @@ import {
   MOCK_TARGETS,
   MOCK_TASKS
 } from './mockData';
-import { Policy, Lead, Employee, UserRole, User, PerformanceTarget, Task } from './types';
+import { Policy, Lead, Employee, LeaveRequest, UserRole, User, PerformanceTarget, Task } from './types';
+import * as api from './api';
 
 // --- Dashboard View ---
 const DashboardView = ({ role, policies, leads, tasks, setActiveTab }: { role: UserRole, policies: Policy[], leads: Lead[], tasks: Task[], setActiveTab: (tab: string) => void }) => {
@@ -331,9 +332,8 @@ const DashboardView = ({ role, policies, leads, tasks, setActiveTab }: { role: U
 };
 
 // --- Payroll & HRMS View ---
-const PayrollView = ({ employees }: { employees: Employee[] }) => {
+const PayrollView = ({ employees, leaveRequests, setLeaveRequests }: { employees: Employee[], leaveRequests: LeaveRequest[], setLeaveRequests: React.Dispatch<React.SetStateAction<LeaveRequest[]>> }) => {
   const [payrollStatus, setPayrollStatus] = useState<'Idle' | 'Processing' | 'Completed'>('Idle');
-  const [leaveRequests, setLeaveRequests] = useState(MOCK_LEAVE_REQUESTS);
 
   const handleProcessPayroll = () => {
     setPayrollStatus('Processing');
@@ -344,8 +344,9 @@ const PayrollView = ({ employees }: { employees: Employee[] }) => {
   };
 
   const handleLeaveAction = (id: string, action: 'Approved' | 'Rejected') => {
-    setLeaveRequests(prev => prev.filter(req => req.id !== id));
-    // In a real app, we'd update the status, but here we'll just remove it for "processing" feel
+    api.updateLeaveRequest(id, action)
+      .then(() => setLeaveRequests(prev => prev.filter(req => req.id !== id)))
+      .catch(console.error);
   };
 
   const salaryData = [
@@ -672,7 +673,9 @@ const PolicyView = ({ role, currentUser, policies, setPolicies, searchQuery: glo
       holderAge: 30,
       holderLocation: 'New York, USA'
     };
-    setPolicies([policy, ...policies]);
+    api.createPolicy(policy)
+      .then(() => setPolicies([policy, ...policies]))
+      .catch(console.error);
     setIsAddModalOpen(false);
     setNewPolicy({
       status: 'Active',
@@ -1066,7 +1069,9 @@ const CRMLeadsView = ({ role, currentUser, leads, setLeads, searchQuery }: { rol
         avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'
       }
     };
-    setLeads([lead, ...leads]);
+    api.createLead(lead)
+      .then(created => setLeads([created, ...leads]))
+      .catch(console.error);
     setIsAddModalOpen(false);
     setNewLead({
       status: 'New Lead',
@@ -1560,7 +1565,9 @@ const TasksView = ({ role, currentUser, tasks, setTasks, searchQuery }: { role: 
       id: `TASK-${Date.now()}`,
       assignedTo: { name: currentUser.name, avatar: currentUser.avatar }
     };
-    setTasks([task, ...tasks]);
+    api.createTask(task)
+      .then(created => setTasks([created, ...tasks]))
+      .catch(console.error);
     setIsAddModalOpen(false);
     setNewTask({
       status: 'To Do',
@@ -1568,6 +1575,12 @@ const TasksView = ({ role, currentUser, tasks, setTasks, searchQuery }: { role: 
       priority: 'Medium',
       dueDate: 'Due in 24h'
     });
+  };
+
+  const handleMoveTask = (id: string, newStatus: Task['status']) => {
+    api.updateTask(id, { status: newStatus })
+      .then(() => setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t)))
+      .catch(console.error);
   };
 
   const filteredTasks = tasks.filter(task => {
@@ -1613,8 +1626,10 @@ const TasksView = ({ role, currentUser, tasks, setTasks, searchQuery }: { role: 
             </div>
             
             <div className="space-y-4">
-              {filteredTasks.filter(t => t.status === col.status).map((task) => (
-                <div key={task.id} className="bg-white p-5 rounded-2xl shadow-sm border border-outline-variant/5 hover:shadow-md transition-shadow cursor-pointer group">
+              {filteredTasks.filter(t => t.status === col.status).map((task) => {
+                const nextStatus: Record<Task['status'], Task['status']> = { 'To Do': 'In Progress', 'In Progress': 'Completed', 'Completed': 'To Do' };
+                return (
+                <div key={task.id} className="bg-white p-5 rounded-2xl shadow-sm border border-outline-variant/5 hover:shadow-md transition-shadow group">
                   <div className="flex justify-between items-start mb-3">
                     <span className={cn(
                       "px-2 py-0.5 text-[10px] font-bold rounded-md uppercase",
@@ -1622,7 +1637,13 @@ const TasksView = ({ role, currentUser, tasks, setTasks, searchQuery }: { role: 
                     )}>
                       {task.category}
                     </span>
-                    <MoreVertical size={14} className="text-slate-300 group-hover:text-slate-500 transition-colors" />
+                    <button
+                      title={`Move to ${nextStatus[task.status]}`}
+                      onClick={() => handleMoveTask(task.id, nextStatus[task.status])}
+                      className="p-1 hover:bg-slate-100 rounded transition-colors"
+                    >
+                      <MoreVertical size={14} className="text-slate-300 group-hover:text-slate-500 transition-colors" />
+                    </button>
                   </div>
                   <h4 className="text-sm font-bold text-on-surface mb-2">{task.title}</h4>
                   <p className="text-[10px] text-on-surface-variant leading-relaxed mb-4">{task.description}</p>
@@ -1639,7 +1660,8 @@ const TasksView = ({ role, currentUser, tasks, setTasks, searchQuery }: { role: 
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             
             <button 
@@ -1760,7 +1782,10 @@ const RenewalView = ({ policies, setPolicies }: { policies: Policy[], setPolicie
   const expiringPolicies = policies.filter(p => p.status === 'Active'); // Simplified logic for demo
 
   const handleRenew = (id: string) => {
-    setPolicies(policies.map(p => p.id === id ? { ...p, status: 'Active', renewalDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] } : p));
+    const newDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    api.updatePolicy(id, { status: 'Active', renewalDate: newDate })
+      .then(() => setPolicies(policies.map(p => p.id === id ? { ...p, status: 'Active', renewalDate: newDate } : p)))
+      .catch(console.error);
   };
 
   return (
@@ -1771,7 +1796,11 @@ const RenewalView = ({ policies, setPolicies }: { policies: Policy[], setPolicie
           <p className="text-on-surface-variant font-body">Maintain continuous coverage for all active risk portfolios.</p>
         </div>
         <button 
-          onClick={() => setPolicies(policies.map(p => ({ ...p, status: 'Active', renewalDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] })))}
+          onClick={() => {
+          const newDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          policies.forEach(p => api.updatePolicy(p.id, { status: 'Active', renewalDate: newDate }).catch(console.error));
+          setPolicies(policies.map(p => ({ ...p, status: 'Active', renewalDate: newDate })));
+        }}
           className="bg-primary text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:opacity-90 transition-all"
         >
           Renew All
@@ -1992,7 +2021,9 @@ const TargetView = ({ role, currentUser, targets, setTargets }: { role: UserRole
       period: newTarget.period || 'Monthly'
     };
 
-    setTargets([target, ...targets]);
+    api.createTarget(target)
+      .then(created => setTargets([created, ...targets]))
+      .catch(console.error);
     setShowAddModal(false);
     setNewTarget({
       category: 'Sales',
@@ -2252,10 +2283,21 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [policies, setPolicies] = useState<Policy[]>(MOCK_POLICIES);
-  const [leads, setLeads] = useState<Lead[]>(MOCK_LEADS);
-  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
-  const [targets, setTargets] = useState<PerformanceTarget[]>(MOCK_TARGETS);
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [targets, setTargets] = useState<PerformanceTarget[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+
+  React.useEffect(() => {
+    api.getLeads().then(setLeads).catch(() => setLeads([]));
+    api.getPolicies().then(setPolicies).catch(() => setPolicies([]));
+    api.getTasks().then(setTasks).catch(() => setTasks([]));
+    api.getTargets().then(setTargets).catch(() => setTargets([]));
+    api.getEmployees().then(setEmployees).catch(() => setEmployees([]));
+    api.getLeaveRequests().then(setLeaveRequests).catch(() => setLeaveRequests([]));
+  }, []);
 
   const getNavItems = (role: UserRole) => {
     const items = [
@@ -2426,8 +2468,8 @@ export default function App() {
               transition={{ duration: 0.2 }}
             >
               {activeTab === 'Dashboard' && <DashboardView role={currentUser.role} policies={policies} leads={leads} tasks={tasks} setActiveTab={setActiveTab} />}
-              {activeTab === 'Payroll' && <PayrollView employees={MOCK_EMPLOYEES} />}
-              {activeTab === 'HRMS' && <PayrollView employees={MOCK_EMPLOYEES} />}
+              {activeTab === 'Payroll' && <PayrollView employees={employees} leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} />}
+              {activeTab === 'HRMS' && <PayrollView employees={employees} leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} />}
               {activeTab === 'Policies' && <PolicyView role={currentUser.role} currentUser={currentUser} policies={policies} setPolicies={setPolicies} searchQuery={searchQuery} />}
               {activeTab === 'CRM Leads' && <CRMLeadsView role={currentUser.role} currentUser={currentUser} leads={leads} setLeads={setLeads} searchQuery={searchQuery} />}
               {activeTab === 'Tasks' && <TasksView role={currentUser.role} currentUser={currentUser} tasks={tasks} setTasks={setTasks} searchQuery={searchQuery} />}
